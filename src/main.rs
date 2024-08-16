@@ -1,4 +1,3 @@
-#![feature(core_intrinsics)]
 pub mod block;
 pub mod embed;
 pub mod header;
@@ -6,10 +5,12 @@ pub mod image;
 
 use std::env;
 use std::fs::File;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Write;
 use std::process::ExitCode;
 use std::str::FromStr;
 
-use bitvec::slice::BitSlice;
 use bitvec::vec::BitVec;
 use block::BlockMode;
 use embed::EmbedAlgorithm;
@@ -21,6 +22,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use rand::Rng;
 use rand::prelude::SliceRandom;
+use bitvec::prelude::*;
 
 fn print_usage(program: &str, opts: Options) {
 	let brief = format!(
@@ -46,6 +48,15 @@ impl ImageInfo for png::OutputInfo {
 	fn height(&self) -> u32 { self.height }
 
 	fn size(&self) -> usize { self.buffer_size() }
+
+	fn encode(&self, w: &mut BufWriter<Box<dyn Write>>, data: Vec<u8>) {
+		let mut encoder = png::Encoder::new(w, self.width(), self.height());
+		encoder.set_color(self.color_type);
+		encoder.set_depth(self.bit_depth);
+		let mut writer = encoder.write_header().unwrap();
+		writer.write_image_data(data.as_slice()).unwrap();
+		println!("Ok");
+	}
 }
 
 fn get_algorithm(s: Option<String>) -> Result<EmbedAlgorithm, String> {
@@ -93,6 +104,79 @@ fn derive_seed(seed: &str) -> Result<[u8; 32], String> {
 	Ok(result)
 }
 
+fn decode(image: String, matches: Matches, header_only: bool) -> Result<(), String> {
+	let algorithm = get_algorithm(matches.opt_str("l"))?;
+	let crc = false;
+
+	let (data, info) = decode_image(image)?;
+	let blockmode = BlockMode::from_length(info.size(), crc);
+	let seed = derive_seed(
+		matches
+			.opt_str("s")
+			.unwrap_or(format!("{}x{}", info.width(), info.height()))
+			.as_str(),
+	)?;
+
+	println!("Blockmode: {blockmode}");
+
+	// Read header
+	let mut read_data = BitVec::<u8>::new();
+	while read_data.len() < 9*8
+	{
+		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+	}
+
+	let (version, blockmode, data_len, comment_len) = Header::from_data(read_data.as_bitslice());
+	// Read header comment
+	while read_data.len() < (9+comment_len as usize)*8
+	{
+		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+	}
+
+	// Extract comment:
+	let comment = String::from_utf8_lossy(
+		&read_data.as_raw_slice()[9..(9+comment_len as usize)]
+	);
+
+	println!("=== HEADER ===");
+	println!("Version: {version}");
+	println!("Data Len: {data_len}");
+	println!("Comment: `{comment}`");
+	println!("==============");
+
+	fn read_byte(slice: &bitvec::slice::BitSlice<u8>) -> u8
+	{
+		let mut result = 0;
+		for i in 0..8
+		{
+			result |= (slice[i as usize] as u8) << i;
+		}
+		result
+	}
+
+	let data_start = 9+comment_len as usize;
+	while read_data.len() < (data_start + data_len as usize)*8
+	{
+		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+	}
+
+	for i in 0..32
+	{
+		let b = read_byte(&read_data[(data_start+i)*8..(data_start+1+i)*8]);
+		println!("{i} : {b:08b} ({})", b as char);
+	}
+
+
+
+	let mut outfile = File::create("decode.png").unwrap();
+	outfile.write(
+		&read_data.as_raw_slice()[data_start..data_start+data_len as usize]
+	).unwrap();
+
+
+	Ok(())
+}
+
 fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 	let algorithm = get_algorithm(matches.opt_str("l"))?;
 	let crc = false;
@@ -100,7 +184,7 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 		.opt_str("i")
 		.ok_or(format!("Embed file is required"))?;
 
-	let (data, info) = decode_image(image)?;
+	let (mut data, info) = decode_image(image)?;
 	let blockmode = BlockMode::from_length(info.size(), crc);
 	let seed = derive_seed(
 		matches
@@ -129,24 +213,49 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 			header.blockmode,
 		))?;
 	}
+	
+	// Blocks to write
+	let blocks_num = ((header_data.len()+embed_data.len()) as f64 / (header.blockmode.len-header.blockmode.crc_len) as f64).ceil() as usize;
 
-	// Shuffle the blocks
-	let mut rand = ChaCha8Rng::from_seed(seed);
-	let blocks_num = info.size() / (header.blockmode.len-header.blockmode.crc_len);
-
-	let mut blocks_pos = (0..blocks_num).collect::<Vec<_>>();
-	blocks_pos.shuffle(&mut rand);
-
-
+	// Get data
 	let mut bv = BitVec::<u8>::from_vec(header_data);
 	bv.extend_from_raw_slice(embed_data.as_slice());
+	// zero-padding
+	while bv.len()/8 < blocks_num*header.blockmode.len
+	{
+		for i in 0..8
+		{
+			bv.push(false);
+		}
+	}
+
+	// Shuffle the blocks
+	//let mut rand = ChaCha8Rng::from_seed(seed);
+	//let mut blocks_pos = (0..blocks_num).collect::<Vec<_>>();
+	//blocks_pos.shuffle(&mut rand);
+
+
+	println!("-------------");
+	println!("Writing:     {blocks_num}x{} [{}] blocks", header.blockmode.len, header.blockmode.crc_len);
+	println!("Data length: {} bytes", bv.len()/8);
+	println!("-------------");
+
+	//for i in 0..9*4 {
+	//	let b = data[i] & 0b1111;
+	//	println!("{b:b}");
+	//}
+	println!("=====");
+
+	// TODO: make sure the rounding error keep this offset safe
+	// i.e that two blocks can't overlap
+	//let coffset = data.len() / (blocks_num+1);
+
 
 	let mut embed_offset = 0;
 	for i in 0 .. blocks_num
 	{
-		println!("{:#?}", bv.len());
-		let (block, mut new_offset) = algorithm.next_block(
-			&data.as_slice()[i*header.blockmode.len..],
+		let mut new_offset = algorithm.next_block(
+			&mut data.as_mut_slice()[i*header.blockmode.len..],
 			&bv,
 			embed_offset,
 			&header.blockmode);
@@ -154,10 +263,17 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 
 		embed_offset = new_offset;
 	}
-	algorithm.next_block(data.as_slice(), &bv, 48, &header.blockmode);
+	println!("{}", bv.len());
 	// TODO: WRITE CRC
 
-	println!("Ok");
+
+	for i in 70..99 {
+		let b = (data[i*2] & 0b1111) | ((data[i*2+1] & 0b1111) << 4);
+		println!("{b:08b}, {}", b as char);
+	}
+	let outfile = File::create("out.png").unwrap();
+	let ref mut w = BufWriter::new(Box::new(outfile) as Box<dyn Write>);
+	info.encode(w, data);
 
 	Ok(vec![])
 }
@@ -199,7 +315,15 @@ fn main() -> ExitCode {
 
 	let input = matches.free[0].clone();
 
-	if matches.opt_present("e") {
+	if matches.opt_present("z") {
+		match decode(input, matches, true) {
+			Ok(_) => todo!(""),
+			Err(e) => {
+				eprintln!("{e}");
+				return ExitCode::FAILURE;
+			}
+		}
+	} else if matches.opt_present("e") {
 		match encode(input, matches) {
 			Ok(_) => todo!(""),
 			Err(e) => {

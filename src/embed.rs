@@ -22,9 +22,7 @@ impl EmbedAlgorithm {
 		}
 	}
 
-	pub fn next_block(&self, original_data: &[u8], embed_data: &BitVec<u8>, mut embed_offset: usize, blockmode: &BlockMode) -> (Vec<u8>, usize) {
-		let mut result = Vec::<u8>::with_capacity(blockmode.len);
-
+	pub fn next_block(&self, original_data: &mut [u8], embed_data: &BitVec<u8>, mut embed_offset: usize, blockmode: &BlockMode) -> usize {
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
 				let mask = (1<<bits) -1;
@@ -41,18 +39,42 @@ impl EmbedAlgorithm {
 
 				for i in 0..(blockmode.len-blockmode.crc_len)
 				{
-					let embed = bits_to_byte(embed_data.get(embed_offset..embed_offset+*bits as usize).unwrap(), *bits);
-					let b = original_data[i];
+					let hi = std::cmp::min(embed_offset+*bits as usize, embed_data.len())-embed_offset;
+					let embed = bits_to_byte(embed_data.get(embed_offset..embed_offset+hi).unwrap(), hi as u8);
 
-					result.push((b & !mask) | embed);
+					original_data[i] &= !mask;
+					original_data[i] |= embed;
 					
-					embed_offset += *bits as usize;
+					embed_offset += hi;
 				}
 			}
 		}
 		
+		embed_offset
+	}
 
-		(result, embed_offset)
+	pub fn read_block(&self, encoded_data: &[u8], incoming: &mut BitVec<u8>, blockmode: &BlockMode) {
+		match self {
+			EmbedAlgorithm::Lo(bits) => {
+				fn push(vec: &mut BitVec<u8>, bits: u8, b: u8)
+				{
+					for i in 0..bits
+					{
+						vec.push((b >> i) & 0b1 == 0b1)
+					}
+				}
+
+				let mut i = 0;
+				let start = incoming.len();
+				while incoming.len()-start < (blockmode.len-blockmode.crc_len)*8
+				{
+					push(incoming, *bits, encoded_data[i]);
+					i += 1;
+				}
+
+				// TODO: Read CRC and verify
+			}
+		}
 	}
 }
 
@@ -79,6 +101,7 @@ impl FromStr for EmbedAlgorithm {
 				let value = second.parse::<u8>().map_err(|err| {
 					format!("Failed to convert `{second}` to a number of bits: {err}")
 				})?;
+				// TODO: We can allow more than 8 bits, depending on the image's bit depth
 				if value > 8 || value == 0 {
 					Err(format!(
 						"Cannot specify {value} bits for `lo` method, must be within [1, 8]"

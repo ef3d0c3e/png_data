@@ -1,4 +1,5 @@
-use std::{fmt::Formatter, intrinsics::ctlz, str::FromStr};
+use std::fmt::Formatter;
+use std::str::FromStr;
 
 /// Block mode for embedded data
 #[derive(Debug)]
@@ -22,18 +23,29 @@ impl BlockMode {
 
 		Self {
 			len: 1 << best_p,
-			crc_len: (best_p/4) * crc as usize,
+			crc_len: (best_p / 4) * crc as usize,
 		}
 	}
+
 	pub fn to_data(&self) -> u8 {
-		((self.crc_len != 0) as u8) | (ctlz(self.len) << 1) as u8
+		((self.crc_len != 0) as u8) | ((u8::leading_zeros(self.len as u8) + 1) << 1) as u8
+	}
+
+	pub fn from_byte(byte: u8) -> BlockMode {
+		let crc = byte & 0b1;
+		let len = byte >> 1;
+
+		Self {
+			len: 1usize << len,
+			crc_len: (crc * len) as usize
+		}
 	}
 }
 
 impl core::fmt::Display for BlockMode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(len: {}, crc_len: {})", self.len, self.crc_len)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "(len: {}, crc_len: {})", self.len, self.crc_len)
+	}
 }
 
 impl FromStr for BlockMode {
