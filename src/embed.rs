@@ -12,6 +12,15 @@ pub enum EmbedAlgorithm {
 }
 
 impl EmbedAlgorithm {
+	/// Get the size of the data (in bytes) once embedded by the algorithm
+	pub fn embedded_size(&self, size: usize) -> usize {
+		match self {
+			EmbedAlgorithm::Lo(bits) => {
+				((size * 8) as f64 / *bits as f64).ceil() as usize
+			}
+		}
+	}
+
 	pub fn max_size(&self, blockmode: &BlockMode, info: &Box<dyn ImageInfo>) -> usize {
 		let blocks_num = info.size() / blockmode.len;
 
@@ -22,7 +31,7 @@ impl EmbedAlgorithm {
 		}
 	}
 
-	pub fn next_block(&self, original_data: &mut [u8], embed_data: &BitVec<u8>, mut embed_offset: usize, blockmode: &BlockMode) -> usize {
+	pub fn next_block(&self, original_data: &mut [u8], mut data_pos: usize, embed_data: &BitVec<u8>, mut embed_offset: usize, blockmode: &BlockMode) -> (usize, usize) {
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
 				let mask = (1<<bits) -1;
@@ -37,23 +46,27 @@ impl EmbedAlgorithm {
 					result
 				}
 
-				for i in 0..(blockmode.len-blockmode.crc_len)
+				let start = embed_offset;
+				while embed_offset-start < (blockmode.len-blockmode.crc_len)*8
 				{
-					let hi = std::cmp::min(embed_offset+*bits as usize, embed_data.len())-embed_offset;
+					let hi = std::cmp::min(*bits as usize, embed_data.len() - embed_offset);
 					let embed = bits_to_byte(embed_data.get(embed_offset..embed_offset+hi).unwrap(), hi as u8);
 
-					original_data[i] &= !mask;
-					original_data[i] |= embed;
+					original_data[data_pos] &= !mask;
+					original_data[data_pos] |= embed;
 					
+					data_pos += 1;
 					embed_offset += hi;
 				}
+
+				// TODO: WRITE CRC
 			}
 		}
 		
-		embed_offset
+		(data_pos, embed_offset)
 	}
 
-	pub fn read_block(&self, encoded_data: &[u8], incoming: &mut BitVec<u8>, blockmode: &BlockMode) {
+	pub fn read_block(&self, encoded_data: &[u8], mut data_pos: usize, incoming: &mut BitVec<u8>, blockmode: &BlockMode) -> usize {
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
 				fn push(vec: &mut BitVec<u8>, bits: u8, b: u8)
@@ -64,17 +77,18 @@ impl EmbedAlgorithm {
 					}
 				}
 
-				let mut i = 0;
 				let start = incoming.len();
 				while incoming.len()-start < (blockmode.len-blockmode.crc_len)*8
 				{
-					push(incoming, *bits, encoded_data[i]);
-					i += 1;
+					push(incoming, *bits, encoded_data[data_pos]);
+					data_pos += 1;
 				}
 
 				// TODO: Read CRC and verify
 			}
 		}
+
+		data_pos
 	}
 }
 

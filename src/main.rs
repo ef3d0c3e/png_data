@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use bitvec::vec::BitVec;
 use block::BlockMode;
+use block::BlockPlacement;
 use embed::EmbedAlgorithm;
 use getopts::Matches;
 use getopts::Options;
@@ -121,16 +122,17 @@ fn decode(image: String, matches: Matches, header_only: bool) -> Result<(), Stri
 
 	// Read header
 	let mut read_data = BitVec::<u8>::new();
+	let mut data_pos = 0;
 	while read_data.len() < 9*8
 	{
-		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+		data_pos = algorithm.read_block(&data, data_pos, &mut read_data, &blockmode);
 	}
 
 	let (version, blockmode, data_len, comment_len) = Header::from_data(read_data.as_bitslice());
 	// Read header comment
 	while read_data.len() < (9+comment_len as usize)*8
 	{
-		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+		data_pos = algorithm.read_block(&data, data_pos, &mut read_data, &blockmode);
 	}
 
 	// Extract comment:
@@ -139,9 +141,9 @@ fn decode(image: String, matches: Matches, header_only: bool) -> Result<(), Stri
 	);
 
 	println!("=== HEADER ===");
-	println!("Version: {version}");
+	println!("Version : {version}");
 	println!("Data Len: {data_len}");
-	println!("Comment: `{comment}`");
+	println!("Comment : `{comment}`");
 	println!("==============");
 
 	fn read_byte(slice: &bitvec::slice::BitSlice<u8>) -> u8
@@ -157,10 +159,10 @@ fn decode(image: String, matches: Matches, header_only: bool) -> Result<(), Stri
 	let data_start = 9+comment_len as usize;
 	while read_data.len() < (data_start + data_len as usize)*8
 	{
-		algorithm.read_block(&data[read_data.len()/8..], &mut read_data, &blockmode);
+		data_pos = algorithm.read_block(&data, data_pos, &mut read_data, &blockmode);
 	}
 
-	for i in 0..32
+	for i in 60..80
 	{
 		let b = read_byte(&read_data[(data_start+i)*8..(data_start+1+i)*8]);
 		println!("{i} : {b:08b} ({})", b as char);
@@ -192,10 +194,17 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 			.unwrap_or(format!("{}x{}", info.width(), info.height()))
 			.as_str(),
 	)?;
+
+
 	let max_size = algorithm.max_size(&blockmode, &info);
 
 	let embed_data = std::fs::read(&embed_file)
 		.map_err(|err| format!("Failed to read embed file `{embed_file}`: {err}"))?;
+
+	let mut rand = ChaCha8Rng::from_seed(seed);
+	//let placement = BlockPlacement::new(data.as_mut_slice(), blockmode.len, &algorithm, embed_data.len(), &mut rand)?;
+
+	//return Ok(vec![]);
 
 	// Get header
 	let header = Header {
@@ -252,24 +261,33 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 
 
 	let mut embed_offset = 0;
+	let mut data_pos = 0;
 	for i in 0 .. blocks_num
 	{
-		let mut new_offset = algorithm.next_block(
-			&mut data.as_mut_slice()[i*header.blockmode.len..],
+		println!("block: {i}/{embed_offset}/{data_pos}");
+		(data_pos, embed_offset) = algorithm.next_block(
+			&mut data.as_mut_slice(),
+			data_pos,
 			&bv,
 			embed_offset,
 			&header.blockmode);
-		new_offset += header.blockmode.crc_len*8;
-
-		embed_offset = new_offset;
 	}
 	println!("{}", bv.len());
-	// TODO: WRITE CRC
 
 
-	for i in 70..99 {
+	for i in 10..80 {
 		let b = (data[i*2] & 0b1111) | ((data[i*2+1] & 0b1111) << 4);
-		println!("{b:08b}, {}", b as char);
+		println!("{i}: {b:08b}, {}", b as char);
+		fn read_byte(slice: &bitvec::slice::BitSlice<u8>) -> u8
+		{
+			let mut result = 0;
+			for i in 0..8
+			{
+				result |= (slice[i as usize] as u8) << i;
+			}
+			result
+		}
+		println!("{i}+ {b:08b}, {}", read_byte(&bv[i*8..(i+1)*8]) as char);
 	}
 	let outfile = File::create("out.png").unwrap();
 	let ref mut w = BufWriter::new(Box::new(outfile) as Box<dyn Write>);

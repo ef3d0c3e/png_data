@@ -1,6 +1,11 @@
 use std::fmt::Formatter;
 use std::str::FromStr;
 
+use rand::Rng;
+use rand::prelude::SliceRandom;
+
+use crate::embed::EmbedAlgorithm;
+
 /// Block mode for embedded data
 #[derive(Debug)]
 pub struct BlockMode {
@@ -65,6 +70,56 @@ impl FromStr for BlockMode {
 		Ok(BlockMode {
 			len: 1 << size,
 			crc_len: size,
+		})
+	}
+}
+
+#[derive(Debug)]
+pub struct BlockPlacement<'a> {
+	data: &'a mut [u8],
+	block_size: usize,
+	blocks: Vec<usize>,
+}
+
+impl<'a> BlockPlacement<'a>
+{
+	// Attempts to create a new block placement
+	//
+	// # Errors
+	//
+	// Will fail if the data is too small to hold all the blocks
+	pub fn new<R>(data: &'a mut [u8], block_size: usize, algorithm: &EmbedAlgorithm, embed_size: usize, rng: &mut R) -> Result<Self, String>
+    	where R: Rng + ?Sized
+	{
+		// Total size of the embed (crc included)
+		let embedded_size = algorithm.embedded_size(embed_size);
+
+		// Number of blocks
+		let blocks_num = (embedded_size as f64 / block_size as f64).ceil() as usize;
+
+
+		// Safe distance for spacing the blocks equally
+		let safe_spacing = data.len() / blocks_num;
+		if safe_spacing*blocks_num < embedded_size {
+			return Err(format!("Failed to determine a safe spacing size: {safe_spacing} < {}", embedded_size as f64 / blocks_num as f64))
+		}
+
+		// Blocks in the resulting data
+		let mut blocks = Vec::with_capacity(blocks_num);
+		for i in 0 .. blocks_num {
+			// Choose a random position within [0, safe_spacing[ for the block
+			let pos = rng.gen_range(i*safe_spacing..(i+1)*safe_spacing);
+
+			blocks.push(pos);
+		}
+
+		// Shuffle the block order
+		blocks.shuffle(rng);
+
+		Ok(Self {
+			data,
+			block_size,
+			blocks
 		})
 	}
 }
