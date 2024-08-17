@@ -43,6 +43,7 @@ Public domain\n"
 	);
 }
 
+/*
 impl ImageInfo for png::OutputInfo {
 	fn width(&self) -> u32 { self.width }
 
@@ -202,9 +203,9 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 		.map_err(|err| format!("Failed to read embed file `{embed_file}`: {err}"))?;
 
 	let mut rand = ChaCha8Rng::from_seed(seed);
-	//let placement = BlockPlacement::new(data.as_mut_slice(), blockmode.len, &algorithm, embed_data.len(), &mut rand)?;
+	let placement = BlockPlacement::new(data.as_mut_slice(), blockmode.len, &algorithm, embed_data.len(), &mut rand)?;
 
-	//return Ok(vec![]);
+	return Ok(vec![]);
 
 	// Get header
 	let header = Header {
@@ -295,6 +296,7 @@ fn encode(image: String, matches: Matches) -> Result<Vec<u8>, String> {
 
 	Ok(vec![])
 }
+*/
 
 fn main() -> ExitCode {
 	let args: Vec<String> = env::args().collect();
@@ -331,6 +333,7 @@ fn main() -> ExitCode {
 		return ExitCode::FAILURE;
 	}
 
+	/*
 	let input = matches.free[0].clone();
 
 	if matches.opt_present("z") {
@@ -350,6 +353,7 @@ fn main() -> ExitCode {
 			}
 		}
 	}
+	*/
 
 	ExitCode::SUCCESS
 }

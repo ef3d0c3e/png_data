@@ -1,12 +1,13 @@
 use std::fmt::Formatter;
 use std::str::FromStr;
 
-use bitvec::prelude::*;
+use bitvec::slice::BitSlice;
 use bitvec::vec::BitVec;
 
 use crate::block::BlockMode;
 use crate::image::ImageInfo;
 
+#[derive(Debug)]
 pub enum EmbedAlgorithm {
 	Lo(u8),
 }
@@ -15,9 +16,7 @@ impl EmbedAlgorithm {
 	/// Get the size of the data (in bytes) once embedded by the algorithm
 	pub fn embedded_size(&self, size: usize) -> usize {
 		match self {
-			EmbedAlgorithm::Lo(bits) => {
-				((size * 8) as f64 / *bits as f64).ceil() as usize
-			}
+			EmbedAlgorithm::Lo(bits) => ((size * 8) as f64 / *bits as f64).ceil() as usize,
 		}
 	}
 
@@ -26,35 +25,43 @@ impl EmbedAlgorithm {
 
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
-				(((blockmode.len - blockmode.crc_len)*blocks_num) as f64 * (*bits as f64) / 8f64).floor() as usize
+				(((blockmode.len - blockmode.crc_len) * blocks_num) as f64 * (*bits as f64) / 8f64)
+					.floor() as usize
 			}
 		}
 	}
 
-	pub fn next_block(&self, original_data: &mut [u8], mut data_pos: usize, embed_data: &BitVec<u8>, mut embed_offset: usize, blockmode: &BlockMode) -> (usize, usize) {
+	pub fn next_block(
+		&self,
+		original_data: &mut [u8],
+		mut data_pos: usize,
+		embed_data: &BitVec<u8>,
+		mut embed_offset: usize,
+		blockmode: &BlockMode,
+	) -> (usize, usize) {
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
-				let mask = (1<<bits) -1;
+				let mask = (1 << bits) - 1;
 
-				fn bits_to_byte(slice: &BitSlice<u8>, bits: u8) -> u8
-				{
-					let mut result : u8 = 0;
-					for i in 0..bits
-					{
+				fn bits_to_byte(slice: &BitSlice<u8>, bits: u8) -> u8 {
+					let mut result: u8 = 0;
+					for i in 0..bits {
 						result |= (slice[i as usize] as u8) << i;
 					}
 					result
 				}
 
 				let start = embed_offset;
-				while embed_offset-start < (blockmode.len-blockmode.crc_len)*8
-				{
+				while embed_offset - start < (blockmode.len - blockmode.crc_len) * 8 {
 					let hi = std::cmp::min(*bits as usize, embed_data.len() - embed_offset);
-					let embed = bits_to_byte(embed_data.get(embed_offset..embed_offset+hi).unwrap(), hi as u8);
+					let embed = bits_to_byte(
+						embed_data.get(embed_offset..embed_offset + hi).unwrap(),
+						hi as u8,
+					);
 
 					original_data[data_pos] &= !mask;
 					original_data[data_pos] |= embed;
-					
+
 					data_pos += 1;
 					embed_offset += hi;
 				}
@@ -62,24 +69,27 @@ impl EmbedAlgorithm {
 				// TODO: WRITE CRC
 			}
 		}
-		
+
 		(data_pos, embed_offset)
 	}
 
-	pub fn read_block(&self, encoded_data: &[u8], mut data_pos: usize, incoming: &mut BitVec<u8>, blockmode: &BlockMode) -> usize {
+	pub fn read_block(
+		&self,
+		encoded_data: &[u8],
+		mut data_pos: usize,
+		incoming: &mut BitVec<u8>,
+		blockmode: &BlockMode,
+	) -> usize {
 		match self {
 			EmbedAlgorithm::Lo(bits) => {
-				fn push(vec: &mut BitVec<u8>, bits: u8, b: u8)
-				{
-					for i in 0..bits
-					{
+				fn push(vec: &mut BitVec<u8>, bits: u8, b: u8) {
+					for i in 0..bits {
 						vec.push((b >> i) & 0b1 == 0b1)
 					}
 				}
 
 				let start = incoming.len();
-				while incoming.len()-start < (blockmode.len-blockmode.crc_len)*8
-				{
+				while incoming.len() - start < (blockmode.len - blockmode.crc_len) * 8 {
 					push(incoming, *bits, encoded_data[data_pos]);
 					data_pos += 1;
 				}

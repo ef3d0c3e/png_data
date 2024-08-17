@@ -1,13 +1,49 @@
-use bitvec::slice::BitSlice;
+use bitvec::{slice::BitSlice, vec::BitVec};
+use crc::Crc;
 
 use crate::block::BlockMode;
 
-pub struct Header {
-	pub blockmode: BlockMode,
-	pub comment: Option<String>,
+#[repr(u16)]
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy)]
+pub enum Version {
+	VERSION_1,
 }
 
+pub trait Encode {
+	// Encode the data
+	fn encode(&self, vec: &mut Vec<u8>);
+}
+
+//pub trait Decode {
+//	fn decode(incoming: &mut EmbedIterator) -> (usize, Self);
+//}
+
+#[derive(Debug)]
+pub struct Header {
+	version: Version,
+	block_size: usize,
+	data_len: u32,
+	data_crc: u32,
+	comment: Option<String>,
+}
+
+
 impl Header {
+	pub fn new(version: Version, block_size: usize, data: &[u8], comment: Option<String>) -> Self {
+		assert_eq!((data.len() as u32) as usize, data.len());
+		assert_eq!(1 << usize::trailing_zeros(block_size), block_size);
+		assert!(comment.as_ref().map_or(0, |c| c.len()) < u16::MAX as usize);
+
+		Self {
+			version,
+			block_size,
+			data_len: data.len() as u32,
+			data_crc: Crc::<u32>::new(&crc::CRC_32_CKSUM).checksum(data),
+			comment,
+		}
+	}
+	/*
 	pub fn to_data(&self, version: u16, embed_len: u32) -> Vec<u8> {
 		let mut header = vec![];
 
@@ -55,4 +91,30 @@ impl Header {
 
 		(version, blockmode, len, comment_len)
 	}
+	*/
+}
+
+impl Encode for Header {
+    fn encode(&self, vec: &mut Vec<u8>) {
+		// Version
+		vec.extend_from_slice((self.version as u16).to_le_bytes().as_slice());
+
+		// Block size
+		vec.push((usize::trailing_zeros(self.block_size) as u8).to_le());
+
+		// Data Len
+		vec.extend_from_slice(self.data_len.to_le_bytes().as_slice());
+
+		// Data CRC
+		vec.extend_from_slice(self.data_crc.to_le_bytes().as_slice());
+
+		// Comment length
+		let comment_length = self.comment.as_ref().map_or(0u16, |c| c.len() as u16);
+		vec.extend_from_slice(comment_length.to_le_bytes().as_slice());
+
+		// Comment
+		if let Some(comment) = &self.comment {
+			vec.extend_from_slice(comment.as_bytes());
+		}
+    }
 }
