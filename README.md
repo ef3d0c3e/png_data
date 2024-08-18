@@ -2,8 +2,8 @@
 
 ## png_embed -- Embed files into mostly innocent PNG
 
-![Contains an embed](docs/with_embed.png)
-![The embed](docs/embed.png)
+![Contains an embed](doc/with_embed.png)
+![The embed](doc/embed.png)
 
 ### Current algorithm:
  * `lo` Embeds data in the colors channels lowest bits.
