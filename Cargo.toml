@@ -1,12 +1,16 @@
 [package]
-name = "png_data2"
+name = "png_data"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "png_embed"
+path = "src/png_embed/main.rs"
+
 [dependencies]
-aes-gcm = "0.10.3"
 argon2 = "0.5.3"
 bitvec = "1.0.1"
+crc = "3.2.1"
 getopts = "0.2.21"
 png = "0.17.13"
 rand = "0.8.5"
