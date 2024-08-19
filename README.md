@@ -27,5 +27,5 @@ Where:
 
 # License
 
-NML is licensed under the GNU AGPL version 3 or later. See [LICENSE.md](LICENSE.md) for more information.
+png_data is licensed under the GNU AGPL version 3 or later. See [LICENSE.md](LICENSE.md) for more information.
 License for third-party dependencies can be accessed via `cargo license`

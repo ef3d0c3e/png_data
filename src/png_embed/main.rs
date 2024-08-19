@@ -27,10 +27,10 @@ use rand_chacha::ChaCha8Rng;
 
 fn print_usage(program: &str, opts: Options) {
 	let brief = format!(
-		"Usage: {0} -l ALGORITHM -(e|d|z) [EMBED] FILE -o OUTPUT [opts]
+		"Usage: {0} -l ALGORITHM -(e|z|d) [EMBED] FILE -o OUTPUT [opts]
 		Encode: {0} -l lo3 -e embed.jpg input.png -o out.png -c \"Embedded JPEG file\"
 		Info:   {0} -l lo3 out.png # Embedded JPEG file
-		Decode: {0} -l lo3 out.png > decoded.jpg",
+		Decode: {0} -l lo3 -d out.png -o decoded.jpg",
 		program
 	);
 	print!("{}", opts.usage(&brief));
@@ -40,7 +40,7 @@ fn print_version() {
 	print!(
 		r#"png_embed (c) ef3d0c3e -- Embed data into PNGs
 Copyright (c) 2024
-NML is licensed under the GNU Affero General Public License version 3 (AGPLv3),
+png_embed is licensed under the GNU Affero General Public License version 3 (AGPLv3),
 under the terms of the Free Software Foundation <https://www.gnu.org/licenses/agpl-3.0.en.html>.
 
 This program is free software; you may modify and redistribute it.
@@ -288,7 +288,7 @@ fn main() -> ExitCode {
 		+ matches.opt_present("z") as usize
 		> 1
 	{
-		eprintln!("Specify either `-e(--embed)`, -z(--info) or `-d(--decode)`");
+		eprintln!("Specify either `-e(--embed)`, `-z(--info)` or `-d(--decode)`");
 		return ExitCode::FAILURE;
 	} else if !matches.opt_present("l") {
 		eprintln!("Missing algorithm name");
