@@ -11,7 +11,7 @@ pub trait Decode {
 
 	/// Decode the data from an iterator
 	fn decode<I>(it: &mut I) -> Result<Self::Type, String>
-		where I: Iterator<Item = u8>;
+		where I: Iterator<Item = (usize, u8)>;
 }
 
 /// The program's version.
@@ -95,14 +95,14 @@ impl Decode for Header {
     type Type = Header;
 
     fn decode<I>(it: &mut I) -> Result<Self::Type, String>
-		    where I: Iterator<Item = u8> {
+		    where I: Iterator<Item = (usize, u8)> {
 		let mut count = 0;
 		let mut next = || -> Result<u8, String> {
 			let result = it
 				.next()
 				.ok_or(format!("Failed to get byte at index: {count}"));
 			count += 1;
-			result
+			result.map(|(_, b)| b)
 		};
 
 		let version = u16::from_le_bytes([next()?, next()?]);

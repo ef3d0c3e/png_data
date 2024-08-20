@@ -7,6 +7,10 @@ edition = "2021"
 name = "png_embed"
 path = "src/png_embed/main.rs"
 
+[[bin]]
+name = "png_data"
+path = "src/png_data/main.rs"
+
 [dependencies]
 argon2 = "0.5.3"
 bitvec = "1.0.1"
