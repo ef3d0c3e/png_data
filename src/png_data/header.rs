@@ -1,6 +1,5 @@
 use crc::Crc;
 
-
 pub trait Encode {
 	/// Encode the data into a vector
 	fn encode(&self, vec: &mut Vec<u8>);

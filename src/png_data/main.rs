@@ -98,6 +98,22 @@ fn best_layout(size: u64, bits_per_pixel: u8) -> (u32, u32) {
 	(width as u32, sz.div_ceil(width) as u32)
 }
 
+/// Gets the minimum image buffer size in bytes
+fn minimum_size(color: ColorType, depth: BitDepth, width: u32, height: u32) -> usize
+{
+	let samples = width as usize * color.samples();
+	(match depth {
+		BitDepth::Sixteen => samples * 2,
+		BitDepth::Eight => samples,
+		subbyte => {
+			let samples_per_byte = 8 / subbyte as usize;
+			let whole = samples / samples_per_byte;
+			let fract = usize::from(samples % samples_per_byte > 0);
+			whole + fract
+		}
+	}) * height as usize
+}
+
 fn encode(input: String, output: String, layout: String, matches: Matches) -> Result<(), String> {
 	let layout = str_to_layout(layout.as_str())?;
 	let comment = matches.opt_str("c");
@@ -139,7 +155,7 @@ fn encode(input: String, output: String, layout: String, matches: Matches) -> Re
 		.map_err(|err| format!("Failed to write png header: {err}"))?;
 
 	// Image byte length
-	let byte_len = ((width as usize) * (height as usize) * (bits_per_pixel as usize)).div_ceil(8);
+	let byte_len = minimum_size(layout.0, layout.1, width, height);
 	data.reserve(byte_len);
 
 	data.extend_from_slice(input_data.as_slice());
