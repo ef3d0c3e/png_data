@@ -10,7 +10,8 @@ pub trait Decode {
 
 	/// Decode the data from an iterator
 	fn decode<I>(it: &mut I) -> Result<Self::Type, String>
-		where I: Iterator<Item = (usize, u8)>;
+	where
+		I: Iterator<Item = (usize, u8)>;
 }
 
 /// The program's version.
@@ -69,7 +70,7 @@ impl Header {
 }
 
 impl Encode for Header {
-    fn encode(&self, vec: &mut Vec<u8>) {
+	fn encode(&self, vec: &mut Vec<u8>) {
 		// Version
 		vec.extend_from_slice((self.version as u16).to_le_bytes().as_slice());
 
@@ -87,14 +88,16 @@ impl Encode for Header {
 		if let Some(comment) = &self.comment {
 			vec.extend_from_slice(comment.as_bytes());
 		}
-    }
+	}
 }
 
 impl Decode for Header {
-    type Type = Header;
+	type Type = Header;
 
-    fn decode<I>(it: &mut I) -> Result<Self::Type, String>
-		    where I: Iterator<Item = (usize, u8)> {
+	fn decode<I>(it: &mut I) -> Result<Self::Type, String>
+	where
+		I: Iterator<Item = (usize, u8)>,
+	{
 		let mut count = 0;
 		let mut next = || -> Result<u8, String> {
 			let result = it
@@ -117,7 +120,7 @@ impl Decode for Header {
 
 			Some(
 				String::from_utf8(comment_data)
-				.map_err(|e| format!("Failed to retrieve comment: {e}"))?,
+					.map_err(|e| format!("Failed to retrieve comment: {e}"))?,
 			)
 		} else {
 			None
@@ -129,7 +132,7 @@ impl Decode for Header {
 			data_crc,
 			comment,
 		})
-    }
+	}
 }
 
 /*

@@ -1,7 +1,8 @@
-pub mod block;
-pub mod embed;
-pub mod header;
-pub mod image;
+mod block;
+mod embed;
+mod ent;
+mod header;
+mod image;
 
 use std::env;
 use std::fs::File;
@@ -16,6 +17,7 @@ use block::BlockPlacement;
 use block::BlockPlacementIterator;
 use crc::Crc;
 use embed::EmbedAlgorithm;
+use ent::EntropyGenerator;
 use getopts::Matches;
 use getopts::Options;
 use header::Decode;
@@ -152,6 +154,14 @@ fn encode(
 	eprintln!("==============");
 
 	placement.write_embed(embed_data.as_slice().view_bits::<Lsb0>());
+	if matches.opt_present("n") {
+		let ent = entropy::shannon_entropy(&embed_data);
+		println!("Payload entropy: {ent}\nFilling image remainder with random data...");
+		placement.fill_unused(EntropyGenerator::new(
+			ent as f64,
+			ChaCha8Rng::from_entropy(),
+		))
+	}
 
 	let outfile = File::create(&output).unwrap();
 	let w = &mut BufWriter::new(Box::new(outfile) as Box<dyn Write>);
@@ -256,6 +266,11 @@ fn main() -> ExitCode {
 	);
 	opts.optflag("z", "info", "Read header");
 	opts.optopt("l", "algorithm", "Embed algorithm", "lo3");
+	opts.optflag(
+		"n",
+		"entropy",
+		"Attempts to hide payload by modifying the file's entropy",
+	);
 	opts.optflag("h", "help", "Print this help menu");
 	opts.optflag("v", "version", "Print program version and licenses");
 

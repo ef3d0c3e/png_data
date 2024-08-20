@@ -4,6 +4,7 @@ use rand::prelude::SliceRandom;
 use rand::Rng;
 
 use crate::embed::EmbedAlgorithm;
+use crate::ent::EntropyGenerator;
 
 /// Gets the best blocksize (i.e. that minimize remaining space) for a certain data length.
 /// The blocksize is a number in range [16, 65536]
@@ -27,6 +28,7 @@ pub struct BlockPlacement<'a> {
 	algorithm: &'a EmbedAlgorithm,
 	data: &'a mut [u8],
 	block_size: usize,
+	pub used_blocks: usize,
 	pub blocks: Vec<usize>,
 }
 
@@ -68,14 +70,16 @@ impl<'a> BlockPlacement<'a> {
 		blocks.shuffle(rng);
 
 		// Only keep the first blocks_num blocks
-		blocks.resize(blocks_num, 0);
+		//blocks.resize(blocks_num, 0);
 
-		Ok(Self {
+		let s = Self {
 			algorithm,
 			data,
 			block_size,
+			used_blocks: blocks_num,
 			blocks,
-		})
+		};
+		Ok(s)
 	}
 
 	// Embeds the data into the original image
@@ -93,7 +97,7 @@ impl<'a> BlockPlacement<'a> {
 		let mut index = 0;
 		match self.algorithm {
 			EmbedAlgorithm::Lo(bits) => {
-				for block in &self.blocks {
+				for block in &self.blocks[0..self.used_blocks] {
 					for i in 0..self.block_size {
 						let pos = block * self.block_size + i;
 						let hi = std::cmp::min(*bits as usize, embed.len() - index);
@@ -102,6 +106,26 @@ impl<'a> BlockPlacement<'a> {
 						self.data[pos] |= bits_to_byte(&embed[index..], hi as u8);
 
 						index += hi;
+					}
+				}
+			}
+		}
+	}
+
+	/// Fills unused blocks with randomly generated data
+	pub fn fill_unused<R>(&mut self, mut gen: EntropyGenerator<R>)
+	where
+		R: Rng,
+	{
+		match self.algorithm {
+			EmbedAlgorithm::Lo(bits) => {
+				let mask: u8 = (1 << bits) - 1;
+				for block in &self.blocks[self.used_blocks..] {
+					for i in 0..self.block_size {
+						let pos = block * self.block_size + i;
+
+						self.data[pos] &= !mask;
+						self.data[pos] |= gen.next() & mask;
 					}
 				}
 			}

@@ -4,7 +4,7 @@
 
 ![TeX Live english documentation](doc/texlive_en.png)
 
-`png_data` transforms a file as a png image.
+`png_data` encodes a file into a png image.
 
 ### Encoding
 `png_data -l rgb8 -e file.pdf -o output.png -c "(.pdf) documentation"`
@@ -52,6 +52,10 @@ Where:
  * `output.png` the resulting PNG file
  * `"(.tar) archive"` an optional comment
 
+**Additional Options**
+ * `-s|--seed TXT` Sets the random seed for determining the payload blocks. By default the random seed is "WIDTHxHEIGHT" where WIDTH and HEIGHT are the original image's dimensions.
+ * `-n|--entropy` Fills unused payload blocks with random data that tries to match the payload's entropy. This feature is experimental and may not fully protect against entropy based steganography-detection. We highlihy recommend that the payload has maximal entropy, which can be achieved by compressing it.
+
 ### Decoding an image
 `png_embed -l lo2 -d image.png -o embed.tar`
 Where:
@@ -59,11 +63,17 @@ Where:
  * `image.png` the PNG containing an embed
  * `embed.tar` the extracted embedded file
 
+**Additional Options**
+ * `-s|--seed TXT` Sets the random seed for determining the payload blocks. By default the random seed is "WIDTHxHEIGHT" where WIDTH and HEIGHT are the original image's dimensions.
+
 ### Getting header information
 `png_embed -l lo2 -z output.png`
  * `lo2` is the `Lo` algorithm using the 2 lowest bits
  * `output.png` a `png_embed` encoded image
 This will display the header of the encoded file, as well as the comment.
+
+**Additional Options**
+ * `-s|--seed TXT` Sets the random seed for determining the payload blocks. By default the random seed is "WIDTHxHEIGHT" where WIDTH and HEIGHT are the original image's dimensions.
 
 # License
 

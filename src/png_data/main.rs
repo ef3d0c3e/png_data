@@ -45,7 +45,7 @@ fn str_to_layout(layout: &str) -> Result<(ColorType, BitDepth), String> {
 	let split = layout
 		.char_indices()
 		.find(|(_, c)| c.is_ascii_digit())
-		.ok_or(format!("Unable to find number for layout's bit depth"))?
+		.ok_or("Unable to find number for layout's bit depth".to_string())?
 		.0;
 	match layout.split_at(split) {
 		("rgb", bits) => match bits {
@@ -99,8 +99,7 @@ fn best_layout(size: u64, bits_per_pixel: u8) -> (u32, u32) {
 }
 
 /// Gets the minimum image buffer size in bytes
-fn minimum_size(color: ColorType, depth: BitDepth, width: u32, height: u32) -> usize
-{
+fn minimum_size(color: ColorType, depth: BitDepth, width: u32, height: u32) -> usize {
 	let samples = width as usize * color.samples();
 	(match depth {
 		BitDepth::Sixteen => samples * 2,
@@ -137,15 +136,12 @@ fn encode(input: String, output: String, layout: String, matches: Matches) -> Re
 	eprintln!("==============");
 
 	let bits_per_pixel = bits_per_pixel(layout.0, layout.1);
-	let (width, height) = best_layout(
-		(data.len() + input_data.len()) as u64,
-		bits_per_pixel
-	);
+	let (width, height) = best_layout((data.len() + input_data.len()) as u64, bits_per_pixel);
 
 	// Encode
 	let output_file = File::create(&output)
 		.map_err(|err| format!("Failed to open output file `{output}`: {err}"))?;
-	let ref mut w = BufWriter::new(output_file);
+	let w = &mut BufWriter::new(output_file);
 	let mut encoder = png::Encoder::new(w, width, height);
 	encoder.set_color(layout.0);
 	encoder.set_depth(layout.1);
@@ -186,12 +182,12 @@ fn decode_header(input: String, _matches: Matches) -> Result<(), String> {
 	let info = reader
 		.next_frame(data.as_mut_slice())
 		.map_err(|err| format!("Failed to read png info for `{input}`: {err}"))?;
-	
+
 	data.resize(info.buffer_size(), 0);
-	
 
 	let mut it = data.iter().enumerate().map(|(idx, byte)| (idx, *byte));
-	let header = Header::decode(&mut it).map_err(|err| format!("Failed to decode header: {err}"))?;
+	let header =
+		Header::decode(&mut it).map_err(|err| format!("Failed to decode header: {err}"))?;
 	eprintln!("=== HEADER ===");
 	eprintln!("Version: {:#?}", header.version);
 	eprintln!(
@@ -216,13 +212,11 @@ fn decode(input: String, output: String, _matches: Matches) -> Result<(), String
 	let info = reader
 		.next_frame(data.as_mut_slice())
 		.map_err(|err| format!("Failed to read png info for `{input}`: {err}"))?;
-	
+
 	data.resize(info.buffer_size(), 0);
-	
 
 	let mut it = data.iter().enumerate().map(|(idx, byte)| (idx, *byte));
-	let header = 
-	{
+	let header = {
 		//let mut temp_it = std::mem::take(&mut it);
 		Header::decode(&mut it).map_err(|err| format!("Failed to decode header: {err}"))?
 	};
@@ -236,14 +230,18 @@ fn decode(input: String, output: String, _matches: Matches) -> Result<(), String
 	eprintln!("==============");
 
 	// Check crc
-	let data_start = it.next().ok_or(format!("Failed to get data start"))?.0;
-	let file_data = &data[data_start..data_start+header.data_len as usize];
+	let data_start = it.next().ok_or("Failed to get data start".to_string())?.0;
+	let file_data = &data[data_start..data_start + header.data_len as usize];
 	let crc = Crc::<u32>::new(&crc::CRC_32_CKSUM).checksum(file_data);
 	if crc != header.data_crc {
-		Err(format!("Data CRC[{crc:X}] does not match header CRC[{:X}]", header.data_crc))?;
+		Err(format!(
+			"Data CRC[{crc:X}] does not match header CRC[{:X}]",
+			header.data_crc
+		))?;
 	}
 
-	std::fs::write(&output, file_data).map_err(|err| format!("Failed to write to output file `{output}`: {err}"))?;
+	std::fs::write(&output, file_data)
+		.map_err(|err| format!("Failed to write to output file `{output}`: {err}"))?;
 	println!("File written to `{output}`");
 
 	Ok(())

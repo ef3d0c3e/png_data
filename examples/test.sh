@@ -7,7 +7,7 @@ PNG_EMBED=../target/debug/png_embed
 echo "Encoding..."
 for i in {1..7}; do
 	echo "Writing dec-lo${i}.."
-	$PNG_EMBED -l lo${i} -e embed.png input.png -o out-lo${i}.png
+	$PNG_EMBED -l lo${i} -n -e embed.png input.png -o out-lo${i}.png
 done
 
 echo "Decoding..."
